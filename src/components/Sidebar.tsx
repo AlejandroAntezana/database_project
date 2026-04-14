@@ -5,7 +5,7 @@ import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 
-export function Sidebar() {
+export function Sidebar({ className }: { className?: string }) {
   const addTable = useStore((state) => state.addTable)
   const nodes = useStore((state) => state.nodes)
   const [newTableName, setNewTableName] = useState("")
@@ -18,7 +18,7 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="w-72 border-r bg-card h-full flex flex-col relative z-20 shadow-soft">
+    <aside className={`border-r bg-card h-full flex flex-col relative z-20 shadow-soft ${className || "w-72"}`}>
       <div className="p-6 border-b border-border/50">
         <h2 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground mb-4">Schema Tools</h2>
         <form onSubmit={handleAddTable} className="flex flex-col gap-3">
