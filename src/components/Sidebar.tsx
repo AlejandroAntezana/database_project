@@ -3,7 +3,6 @@ import { Plus, Database } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 
 export function Sidebar({ className }: { className?: string }) {
   const addTable = useStore((state) => state.addTable)

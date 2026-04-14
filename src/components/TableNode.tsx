@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { Handle, Position, useStore as useFlowStore } from '@xyflow/react'
-import type { Table, Column, DataType } from '../store/useStore'
+import type { Table, DataType } from '../store/useStore'
 import { Card, CardHeader, CardTitle, CardContent } from './ui/card'
 import { Key, Plus, Trash2, Pencil } from 'lucide-react'
 import { useStore } from '../store/useStore'
