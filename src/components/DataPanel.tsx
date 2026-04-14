@@ -11,6 +11,7 @@ export function DataPanel() {
   const insertRow = useStore(state => state.insertRow)
   const deleteRow = useStore(state => state.deleteRow)
   const updateEdgeJoin = useStore(state => state.updateEdgeJoin)
+  const deleteEdge = useStore(state => state.deleteEdge)
 
   const selectedNode = nodes.find(n => n.selected)
   const selectedEdge = edges.find(e => e.selected)
@@ -110,40 +111,45 @@ export function DataPanel() {
     return (
       <div className="h-80 border-t bg-card shrink-0 flex flex-col shadow-[0_-4px_20px_-10px_rgba(0,0,0,0.1)] z-20 relative">
         <div className="flex flex-col p-4 border-b border-border/50 bg-muted/10 gap-2">
-          <div className="flex items-center space-x-6">
-            <div className="flex items-center text-primary">
-              <LinkIcon className="mr-2" size={18} />
-              <h2 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground">
-                Join Configuration
-              </h2>
-            </div>
-            {sourceTable && targetTable ? (
-              <div className="flex items-center gap-4 text-xs">
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold text-primary">{sourceTable.name}</span>
-                  <select className="bg-background border rounded px-2 py-1" value={(edgeData.sourceColumn as string) || ''} onChange={e => updateEdgeJoin(selectedEdge.id, e.target.value, (edgeData.targetColumn as string) || '', currentCard)}>
-                    <option value="">-- Columna --</option>
-                    {sourceCols.map((c: any) => <option key={c.id} value={c.name}>{c.name}</option>)}
-                  </select>
-                </div>
-                <span className="font-bold text-muted-foreground">=</span>
-                <div className="flex items-center gap-2">
-                  <select className="bg-background border rounded px-2 py-1" value={(edgeData.targetColumn as string) || ''} onChange={e => updateEdgeJoin(selectedEdge.id, (edgeData.sourceColumn as string) || '', e.target.value, currentCard)}>
-                    <option value="">-- Columna --</option>
-                    {targetCols.map((c: any) => <option key={c.id} value={c.name}>{c.name}</option>)}
-                  </select>
-                  <span className="font-semibold text-primary">{targetTable.name}</span>
-                </div>
-                <div className="flex items-center gap-2 ml-4 pl-4 border-l">
-                  <span className="font-medium text-muted-foreground">Cardinalidad:</span>
-                  <select className="bg-background border rounded px-2 py-1 font-bold" value={currentCard} onChange={e => updateEdgeJoin(selectedEdge.id, (edgeData.sourceColumn as string) || '', (edgeData.targetColumn as string) || '', e.target.value)}>
-                    <option value="1:1">1 a 1 (1:1)</option>
-                    <option value="1:N">1 a Muchos (1:N)</option>
-                    <option value="N:M">Muchos a Muchos (N:M)</option>
-                  </select>
-                </div>
+          <div className="flex items-center justify-between w-full">
+            <div className="flex items-center space-x-6">
+              <div className="flex items-center text-primary">
+                <LinkIcon className="mr-2" size={18} />
+                <h2 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground">
+                  Join Configuration
+                </h2>
               </div>
-            ) : <span className="text-destructive text-xs">Tablas origen/destino no encontradas.</span>}
+              {sourceTable && targetTable ? (
+                <div className="flex items-center gap-4 text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-primary">{sourceTable.name}</span>
+                    <select className="bg-background border rounded px-2 py-1" value={(edgeData.sourceColumn as string) || ''} onChange={e => updateEdgeJoin(selectedEdge.id, e.target.value, (edgeData.targetColumn as string) || '', currentCard)}>
+                      <option value="">-- Columna --</option>
+                      {sourceCols.map((c: any) => <option key={c.id} value={c.name}>{c.name}</option>)}
+                    </select>
+                  </div>
+                  <span className="font-bold text-muted-foreground">=</span>
+                  <div className="flex items-center gap-2">
+                    <select className="bg-background border rounded px-2 py-1" value={(edgeData.targetColumn as string) || ''} onChange={e => updateEdgeJoin(selectedEdge.id, (edgeData.sourceColumn as string) || '', e.target.value, currentCard)}>
+                      <option value="">-- Columna --</option>
+                      {targetCols.map((c: any) => <option key={c.id} value={c.name}>{c.name}</option>)}
+                    </select>
+                    <span className="font-semibold text-primary">{targetTable.name}</span>
+                  </div>
+                  <div className="flex items-center gap-2 ml-4 pl-4 border-l">
+                    <span className="font-medium text-muted-foreground">Cardinalidad:</span>
+                    <select className="bg-background border rounded px-2 py-1 font-bold" value={currentCard} onChange={e => updateEdgeJoin(selectedEdge.id, (edgeData.sourceColumn as string) || '', (edgeData.targetColumn as string) || '', e.target.value)}>
+                      <option value="1:1">1 a 1 (1:1)</option>
+                      <option value="1:N">1 a Muchos (1:N)</option>
+                      <option value="N:M">Muchos a Muchos (N:M)</option>
+                    </select>
+                  </div>
+                </div>
+              ) : <span className="text-destructive text-xs">Tablas origen/destino no encontradas.</span>}
+            </div>
+            <button onClick={() => deleteEdge(selectedEdge.id)} className="flex items-center text-xs font-semibold px-3 py-1.5 bg-destructive text-destructive-foreground hover:bg-destructive/90 rounded-md transition-colors" title="Eliminar Relación">
+              <Trash2 size={14} className="mr-1" /> Eliminar
+            </button>
           </div>
           {sourceTable && targetTable && (
             <div className="text-xs text-muted-foreground bg-primary/10 text-primary px-3 py-1.5 rounded-md inline-block w-fit font-medium">

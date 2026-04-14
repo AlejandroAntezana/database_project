@@ -41,6 +41,9 @@ interface DatabaseState {
   updateEdgeJoin: (edgeId: string, sourceCol: string, targetCol: string, cardinality?: string) => void
   insertRow: (tableId: string, data: Record<string, any>) => void
   deleteRow: (rowId: string) => void
+  deleteTable: (id: string) => void
+  renameTable: (id: string, newName: string) => void
+  deleteEdge: (id: string) => void
 }
 
 export const useStore = create<DatabaseState>()(
@@ -104,7 +107,24 @@ export const useStore = create<DatabaseState>()(
         set((state) => ({ rows: [...state.rows, { id, tableId, data: recordData }] }))
       },
       
-      deleteRow: (rowId) => set((state) => ({ rows: state.rows.filter(r => r.id !== rowId) }))
+      deleteRow: (rowId) => set((state) => ({ rows: state.rows.filter(r => r.id !== rowId) })),
+
+      deleteTable: (id) => set((state) => ({
+        nodes: state.nodes.filter(n => n.id !== id),
+        edges: state.edges.filter(e => e.source !== id && e.target !== id),
+        rows: state.rows.filter(r => r.tableId !== id)
+      })),
+
+      renameTable: (id, newName) => set((state) => ({
+        nodes: state.nodes.map(node => node.id === id ? { 
+          ...node, 
+          data: { ...node.data, name: newName } 
+        } : node)
+      })),
+
+      deleteEdge: (id) => set((state) => ({
+        edges: state.edges.filter(e => e.id !== id)
+      }))
     }),
     {
       name: 'edudb-storage',
