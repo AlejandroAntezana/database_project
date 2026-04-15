@@ -3,9 +3,11 @@ import { Plus, Database } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
+import { getViveroExample, getUrbanoExample } from '../lib/examples'
 
 export function Sidebar({ className }: { className?: string }) {
   const addTable = useStore((state) => state.addTable)
+  const loadSchema = useStore((state) => state.loadSchema)
   const nodes = useStore((state) => state.nodes)
   const [newTableName, setNewTableName] = useState("")
 
@@ -14,6 +16,16 @@ export function Sidebar({ className }: { className?: string }) {
     if (!newTableName.trim()) return
     addTable(newTableName, { x: Math.random() * 200 + 50, y: Math.random() * 200 + 50 })
     setNewTableName("")
+  }
+
+  const handleLoadVivero = () => {
+    const { nodes, edges, rows } = getViveroExample()
+    loadSchema(nodes, edges, rows)
+  }
+
+  const handleLoadUrbano = () => {
+    const { nodes, edges, rows } = getUrbanoExample()
+    loadSchema(nodes, edges, rows)
   }
 
   return (
@@ -30,6 +42,11 @@ export function Sidebar({ className }: { className?: string }) {
             <Plus size={16} /> Add Table
           </Button>
         </form>
+        <div className="mt-4 flex flex-col gap-2">
+          <h3 className="font-semibold text-xs tracking-wider text-muted-foreground mt-2 mb-1">Cargar Ejemplo</h3>
+          <Button type="button" variant="secondary" size="sm" onClick={handleLoadVivero} className="w-full text-xs justify-start px-3 bg-muted/50 hover:bg-muted font-bold text-emerald-600 dark:text-emerald-400">🌱 Vivero</Button>
+          <Button type="button" variant="secondary" size="sm" onClick={handleLoadUrbano} className="w-full text-xs justify-start px-3 bg-muted/50 hover:bg-muted font-bold text-blue-600 dark:text-blue-400">🏙️ Mantenimiento Urbano</Button>
+        </div>
       </div>
       
       <div className="flex-1 overflow-auto p-6">

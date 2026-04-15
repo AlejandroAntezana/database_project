@@ -10,12 +10,17 @@ export function TableNode({ data, selected }: { data: Table, selected?: boolean 
   const deleteColumn = useStore((state) => state.deleteColumn)
   const deleteTable = useStore((state) => state.deleteTable)
   const renameTable = useStore((state) => state.renameTable)
+  const updateColumn = useStore((state) => state.updateColumn)
 
   const selectedEdge = useFlowStore((state) => state.edges.find((e) => e.selected))
   const [showAdd, setShowAdd] = useState(false)
   const [colName, setColName] = useState("")
   const [colType, setColType] = useState<DataType>("Varchar")
   const [isPK, setIsPK] = useState(false)
+  const [isRequired, setIsRequired] = useState(false)
+
+  const [editingColId, setEditingColId] = useState<string | null>(null)
+  const [editColPayload, setEditColPayload] = useState<Partial<import('../store/useStore').Column>>({})
 
   const [isEditingName, setIsEditingName] = useState(false)
   const [editNameValue, setEditNameValue] = useState(data.name)
@@ -40,10 +45,19 @@ export function TableNode({ data, selected }: { data: Table, selected?: boolean 
   const handleAddColumn = (e: React.FormEvent) => {
     e.preventDefault()
     if (!colName.trim()) return
-    addColumn(data.id, { name: colName, type: colType, isPrimaryKey: isPK })
+    addColumn(data.id, { name: colName, type: colType, isPrimaryKey: isPK, isRequired })
     setColName("")
     setShowAdd(false)
     setIsPK(false)
+    setIsRequired(false)
+  }
+
+  const handleSaveEditColumn = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (editingColId && editColPayload.name?.trim()) {
+      updateColumn(data.id, editingColId, editColPayload)
+      setEditingColId(null)
+    }
   }
 
   return (
@@ -83,6 +97,44 @@ export function TableNode({ data, selected }: { data: Table, selected?: boolean 
             (selectedEdge.target === data.id && selectedEdge.data?.targetColumn === col.name)
           )
           
+          if (editingColId === col.id) {
+            return (
+              <form key={col.id} onSubmit={handleSaveEditColumn} className="px-3 py-2 border-b border-border/40 bg-muted/20 flex flex-col gap-2">
+                <input 
+                  autoFocus
+                  className="text-xs w-full bg-background border border-input rounded p-1" 
+                  value={editColPayload.name || ''}
+                  onChange={e => setEditColPayload(prev => ({ ...prev, name: e.target.value }))}
+                />
+                <div className="flex items-center gap-2">
+                  <select 
+                    className="text-xs bg-background border border-input rounded p-1 flex-1"
+                    value={editColPayload.type || ''}
+                    onChange={e => setEditColPayload(prev => ({ ...prev, type: e.target.value as DataType }))}
+                  >
+                    <option value="Integer">Integer</option>
+                    <option value="Varchar">Varchar</option>
+                    <option value="Boolean">Boolean</option>
+                    <option value="Date">Date</option>
+                    <option value="Decimal">Decimal</option>
+                  </select>
+                </div>
+                <div className="flex items-center gap-3">
+                  <label className="text-[10px] flex items-center gap-1 cursor-pointer">
+                    <input type="checkbox" checked={!!editColPayload.isPrimaryKey} onChange={e => setEditColPayload(prev => ({ ...prev, isPrimaryKey: e.target.checked }))} /> PK
+                  </label>
+                  <label className="text-[10px] flex items-center gap-1 cursor-pointer">
+                    <input type="checkbox" checked={!!editColPayload.isRequired} onChange={e => setEditColPayload(prev => ({ ...prev, isRequired: e.target.checked }))} /> Req
+                  </label>
+                </div>
+                <div className="flex justify-between gap-2 mt-1">
+                  <button type="button" onClick={() => setEditingColId(null)} className="text-[10px] text-muted-foreground hover:text-foreground">Cancelar</button>
+                  <button type="submit" className="text-[10px] font-semibold text-primary">Guardar</button>
+                </div>
+              </form>
+            )
+          }
+
           return (
             <div key={col.id} className={`flex items-center justify-between px-3 py-2 border-b border-border/40 text-xs hover:bg-muted/30 group transition-colors ${
               isHighlighted ? 'bg-yellow-100 dark:bg-yellow-900/40 outline outline-2 outline-yellow-400 z-10 font-bold' : ''
@@ -92,10 +144,15 @@ export function TableNode({ data, selected }: { data: Table, selected?: boolean 
                 <span className={`font-medium ${isHighlighted ? 'text-yellow-600 dark:text-yellow-400' : 'text-foreground'}`}>{col.name}</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-muted-foreground">{col.type}</span>
-                <button onClick={() => deleteColumn(data.id, col.id)} className="opacity-0 group-hover:opacity-100 text-destructive transition-opacity">
-                  <Trash2 size={12} />
-                </button>
+                <span className="text-muted-foreground">{col.type}{col.isRequired && <span className="text-[9px] text-indigo-400 ml-1">REQ</span>}</span>
+                <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button onClick={() => { setEditingColId(col.id); setEditColPayload(col); }} className="text-muted-foreground hover:text-foreground p-1">
+                    <Pencil size={12} />
+                  </button>
+                  <button onClick={() => deleteColumn(data.id, col.id)} className="text-destructive p-1">
+                    <Trash2 size={12} />
+                  </button>
+                </div>
               </div>
             </div>
           )
@@ -120,10 +177,15 @@ export function TableNode({ data, selected }: { data: Table, selected?: boolean 
                 <option value="Varchar">Varchar</option>
                 <option value="Boolean">Boolean</option>
                 <option value="Date">Date</option>
+                <option value="Decimal">Decimal</option>
               </select>
               <label className="text-[10px] flex items-center gap-1 cursor-pointer">
                 <input type="checkbox" checked={isPK} onChange={e => setIsPK(e.target.checked)} />
                 PK
+              </label>
+              <label className="text-[10px] flex items-center gap-1 cursor-pointer">
+                <input type="checkbox" checked={isRequired} onChange={e => setIsRequired(e.target.checked)} />
+                Req
               </label>
             </div>
             <div className="flex justify-between gap-2 mt-1">

@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { FlowCanvas } from "./components/FlowCanvas"
 import { Sidebar } from "./components/Sidebar"
 import { DataPanel } from "./components/DataPanel"
@@ -7,6 +7,33 @@ import { PanelLeftClose, PanelLeft, PanelBottomClose, PanelBottom } from "lucide
 function App() {
   const [showSidebar, setShowSidebar] = useState(true)
   const [showDataPanel, setShowDataPanel] = useState(true)
+  const [panelHeight, setPanelHeight] = useState(320)
+  const [isResizing, setIsResizing] = useState(false)
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing) return
+      // Calculate new height from bottom
+      const newHeight = window.innerHeight - e.clientY
+      // Constrain it explicitly so it doesn't break the layout completely
+      if (newHeight > 100 && newHeight < window.innerHeight - 100) {
+        setPanelHeight(newHeight)
+      }
+    }
+    const handleMouseUp = () => {
+      setIsResizing(false)
+    }
+
+    if (isResizing) {
+      document.addEventListener('mousemove', handleMouseMove)
+      document.addEventListener('mouseup', handleMouseUp)
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [isResizing])
 
   return (
     <div className="flex h-screen w-full bg-background overflow-hidden font-sans">
@@ -43,7 +70,19 @@ function App() {
           <FlowCanvas />
         </main>
         
-        <div className={`transition-all duration-300 overflow-hidden ${showDataPanel ? 'h-80' : 'h-0'}`}>
+        {showDataPanel && (
+          <div 
+            className="h-1.5 w-full bg-border hover:bg-primary/50 cursor-ns-resize transition-colors shrink-0 z-30 relative group flex items-center justify-center"
+            onMouseDown={() => setIsResizing(true)}
+            title="Arrastrar para redimensionar el panel"
+          >
+             <div className="w-12 h-0.5 bg-muted-foreground/30 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"></div>
+          </div>
+        )}
+        <div 
+          className={`transition-[height] duration-75 overflow-hidden flex flex-col ${showDataPanel ? '' : 'hidden'}`}
+          style={{ height: showDataPanel ? `${panelHeight}px` : '0px' }}
+        >
           <DataPanel />
         </div>
       </div>

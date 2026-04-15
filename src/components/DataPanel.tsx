@@ -2,7 +2,8 @@ import React, { useState, useMemo } from 'react'
 import { useStore } from '../store/useStore'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
-import { Trash2, Link as LinkIcon, Database, TerminalSquare, CheckSquare } from 'lucide-react'
+import { Trash2, Link as LinkIcon, Database, TerminalSquare } from 'lucide-react'
+import { QueryBuilder } from './QueryBuilder'
 
 export function DataPanel() {
   const nodes = useStore(state => state.nodes)
@@ -23,8 +24,14 @@ export function DataPanel() {
 
   // Query Sandbox States
   const [activeTab, setActiveTab] = useState<'data' | 'query'>('data')
-  const [queryCols, setQueryCols] = useState<Record<string, boolean>>({})
-  const [whereClause, setWhereClause] = useState("")
+  
+  // Visual Query Builder States
+  const selectedQueryTable = useStore(state => state.selectedQueryTable)
+  const queryConditions = useStore(state => state.queryConditions)
+  const logicalOperator = useStore(state => state.logicalOperator)
+  const querySorts = useStore(state => state.querySorts)
+
+  const queryTableData = nodes.find(n => n.id === selectedQueryTable)?.data as any
 
   const tableRows = useMemo(() => {
     if (!table) return []
@@ -67,27 +74,60 @@ export function DataPanel() {
     return results
   }, [rows, sourceTable, targetTable, edgeData, selectedEdge])
 
-  // Dynamic Query Execution Filter
+  // Dynamic Query Execution Filter (Visual Builder)
   const queryRows = useMemo(() => {
-    if (!table || activeTab !== 'query') return []
-    let data = rows.filter(r => r.tableId === table.id)
-    if (whereClause.trim()) {
-       try {
-         const keys = table.columns?.map((c: any) => c.name) || []
-         if (keys.length > 0) {
-           // Basic JS eval wrapper for conditions like "precio > 100"
-           let condition = whereClause.replace(/(?<![=<>!])=(?![=])/g, '===') // Replace single '=' with '===' safely
-           const func = new Function(...keys, `return ${condition};`)
-           data = data.filter(r => {
-             try { return func(...keys.map((k: string) => r.data[k])) } catch { return false }
-           })
-         }
-       } catch (e) {
-         return [] // Invalid syntax
-       }
+    if (!selectedQueryTable || activeTab !== 'query') return []
+    let data = rows.filter(r => r.tableId === selectedQueryTable)
+    
+    if (queryConditions.length > 0) {
+      data = data.filter(r => {
+        const results = queryConditions.map(c => {
+          if (!c.column || !c.operator) return true // ignore incomplete
+          const rowVal = r.data[c.column]
+          
+          if (c.operator === 'IS_TRUE') return rowVal === true || String(rowVal).toLowerCase() === 'true'
+          if (c.operator === 'IS_FALSE') return rowVal === false || String(rowVal).toLowerCase() === 'false'
+          if (c.operator === 'CONTAINS') return String(rowVal).toLowerCase().includes(String(c.value).toLowerCase())
+          
+          if (c.operator === '=') return String(rowVal) === String(c.value)
+          
+          const nRow = Number(rowVal)
+          const nVal = Number(c.value)
+          if (!isNaN(nRow) && !isNaN(nVal)) {
+             if (c.operator === '>') return nRow > nVal
+             if (c.operator === '<') return nRow < nVal
+          }
+          return false
+        })
+        
+        return logicalOperator === 'AND' ? results.every(res => res) : results.some(res => res)
+      })
     }
+
+    if (querySorts.length > 0) {
+      data = [...data].sort((a, b) => {
+        for (const sort of querySorts) {
+           if (!sort.column) continue
+           const valA = a.data[sort.column]
+           const valB = b.data[sort.column]
+           if (valA === valB) continue
+           
+           const numA = Number(valA)
+           const numB = Number(valB)
+           const isNum = !isNaN(numA) && !isNaN(numB)
+           
+           let compare = 0
+           if (isNum) compare = numA - numB
+           else compare = String(valA).localeCompare(String(valB))
+           
+           return sort.direction === 'ASC' ? compare : -compare
+        }
+        return 0
+      })
+    }
+    
     return data
-  }, [rows, table, whereClause, activeTab])
+  }, [rows, selectedQueryTable, queryConditions, logicalOperator, querySorts, activeTab])
 
 
   // Semantic Relationship Translator
@@ -109,7 +149,7 @@ export function DataPanel() {
     const currentCard = (edgeData.cardinality as string) || '1:1'
 
     return (
-      <div className="h-80 border-t bg-card shrink-0 flex flex-col shadow-[0_-4px_20px_-10px_rgba(0,0,0,0.1)] z-20 relative">
+      <div className="h-full border-t bg-card shrink-0 flex flex-col shadow-[0_-4px_20px_-10px_rgba(0,0,0,0.1)] z-20 relative">
         <div className="flex flex-col p-4 border-b border-border/50 bg-muted/10 gap-2">
           <div className="flex items-center justify-between w-full">
             <div className="flex items-center space-x-6">
@@ -209,7 +249,7 @@ export function DataPanel() {
 
   if (!table) {
     return (
-      <div className="h-72 border-t bg-card shrink-0 flex flex-col p-4 shadow-[0_-4px_20px_-10px_rgba(0,0,0,0.1)] z-20 relative">
+      <div className="h-full border-t bg-card shrink-0 flex flex-col p-4 shadow-[0_-4px_20px_-10px_rgba(0,0,0,0.1)] z-20 relative">
         <h2 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground mb-4">Panel de Control</h2>
         <div className="flex-1 bg-background rounded-md border border-dashed border-border/70 p-4 flex flex-col gap-2 items-center justify-center text-sm text-muted-foreground text-center">
           <Database size={40} className="text-border mb-2" />
@@ -227,15 +267,15 @@ export function DataPanel() {
   }
   
   const tableCols = table.columns || []
-  const selectedKeys = Object.keys(queryCols).filter(k => queryCols[k])
+  const displayCols = activeTab === 'data' ? tableCols : (queryTableData?.columns || [])
 
   return (
-    <div className="h-80 border-t bg-card shrink-0 flex flex-col shadow-[0_-4px_20px_-10px_rgba(0,0,0,0.1)] z-20 relative transition-all">
+    <div className="h-full border-t bg-card shrink-0 flex flex-col shadow-[0_-4px_20px_-10px_rgba(0,0,0,0.1)] z-20 relative transition-all">
       <div className="flex items-center justify-between px-4 py-2 border-b border-border/50 bg-muted/10">
         <div className="flex items-center gap-6">
           <h2 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground flex items-center">
             <Database size={16} className="mr-2" />
-            <span className="text-primary font-bold">{table.name}</span>
+            <span className="text-primary font-bold">{activeTab === 'data' ? table.name : "Query Sandbox"}</span>
           </h2>
           <div className="flex bg-background border rounded-md overflow-hidden text-xs">
             <button 
@@ -266,10 +306,9 @@ export function DataPanel() {
       
       <div className="flex flex-1 overflow-hidden">
         {/* LEFT COLUMN: Data Entry OR Query Builder */}
-        <div className="w-80 border-r border-border/50 p-4 overflow-y-auto bg-muted/10 shrink-0">
-          
+        <div className={`${activeTab === 'query' ? 'w-[500px]' : 'w-80'} border-r border-border/50 shrink-0 transition-all duration-300 flex flex-col overflow-hidden`}>
           {activeTab === 'data' ? (
-            <>
+            <div className="p-4 bg-muted/10 h-full overflow-y-auto">
               <h3 className="font-semibold text-xs text-foreground uppercase tracking-wider mb-4">Insertar Fila</h3>
               <form onSubmit={handleInsert} className="flex flex-col gap-3">
                 {tableCols.map((col: any) => (
@@ -288,8 +327,9 @@ export function DataPanel() {
                        </select>
                      ) : (
                        <Input 
-                         required={col.isPrimaryKey}
-                         type={col.type === 'Integer' ? 'number' : col.type === 'Date' ? 'date' : 'text'}
+                         required={col.isPrimaryKey || col.isRequired}
+                         type={col.type === 'Integer' || col.type === 'Decimal' ? 'number' : col.type === 'Date' ? 'date' : 'text'}
+                         step={col.type === 'Decimal' ? 'any' : undefined}
                          value={formData[col.name] || ''}
                          onChange={e => setFormData({ ...formData, [col.name]: e.target.value })}
                          className="h-8 text-xs bg-background"
@@ -304,71 +344,25 @@ export function DataPanel() {
                   <p className="text-xs text-muted-foreground">Añade columnas primero.</p>
                 )}
               </form>
-            </>
+            </div>
           ) : (
-            <>
-              <h3 className="font-semibold text-xs text-indigo-700 uppercase tracking-wider mb-4 flex items-center gap-2">
-                 <CheckSquare size={14} /> Constructor SQL
-              </h3>
-              <div className="flex flex-col gap-4">
-                <div>
-                  <label className="text-xs font-bold text-muted-foreground mb-2 block">1. SELECT (Columnas)</label>
-                  <div className="flex flex-col gap-2 p-3 bg-background rounded border">
-                    {tableCols.map((col: any) => (
-                      <label key={col.id} className="flex items-center gap-2 text-xs cursor-pointer">
-                        <input 
-                          type="checkbox" 
-                          checked={!!queryCols[col.name]}
-                          onChange={(e) => setQueryCols({ ...queryCols, [col.name]: e.target.checked })}
-                          className="rounded text-indigo-600 focus:ring-indigo-500"
-                        />
-                        <span>{col.name} <span className="text-[10px] text-muted-foreground">({col.type})</span></span>
-                      </label>
-                    ))}
-                    {tableCols.length === 0 && <span className="text-xs text-muted-foreground">Sin columnas.</span>}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-muted-foreground mb-2 block">2. WHERE (Filtro Visual)</label>
-                  <Input 
-                    placeholder="Ej: id > 5 OR nombre === 'Juan'"
-                    value={whereClause}
-                    onChange={(e) => setWhereClause(e.target.value)}
-                    className="h-8 text-xs font-mono bg-background border-indigo-200 focus-visible:ring-indigo-500"
-                  />
-                  <p className="text-[10px] text-muted-foreground mt-1 px-1">Se interpreta en vivo sobre los datos.</p>
-                </div>
-              </div>
-            </>
+            <QueryBuilder />
           )}
-
         </div>
 
         {/* RIGHT COLUMN: Table Output */}
         <div className="flex-1 flex flex-col overflow-hidden bg-background relative">
-          
-          {/* Query Preview Banner */}
-          {activeTab === 'query' && (
-            <div className="bg-indigo-950 text-indigo-200 p-3 font-mono text-xs border-b border-indigo-900 shrink-0">
-               <span className="text-pink-400">SELECT</span> {selectedKeys.length > 0 ? selectedKeys.join(', ') : '*'} <br />
-               <span className="text-pink-400">FROM</span> <span className="text-emerald-300">{table.name}</span>
-               {whereClause.trim() && <><br /><span className="text-pink-400">WHERE</span> {whereClause}</>}
-               <span className="text-indigo-400">;</span>
-            </div>
-          )}
 
           <div className="flex-1 overflow-auto p-0">
-            {tableCols.length === 0 ? (
+            {displayCols.length === 0 ? (
                <div className="text-sm text-muted-foreground flex items-center justify-center h-full">
-                 Estructura vacía
+                 Estructura vacía o tabla no seleccionada.
                </div>
             ) : (
               <table className="w-full text-sm text-left">
                 <thead className="text-xs text-muted-foreground uppercase bg-muted/30 sticky top-0 shadow-sm">
                   <tr>
-                    {tableCols
-                      .filter((col: any) => activeTab === 'data' || selectedKeys.length === 0 || queryCols[col.name])
+                    {displayCols
                       .map((col: any) => (
                         <th key={col.id} className="px-4 py-3 font-semibold">{col.name}</th>
                     ))}
@@ -378,8 +372,7 @@ export function DataPanel() {
                 <tbody>
                   {(activeTab === 'data' ? tableRows : queryRows).map((row) => (
                     <tr key={row.id} className="border-b border-border/50 hover:bg-muted/20 transition-colors">
-                      {tableCols
-                        .filter((col: any) => activeTab === 'data' || selectedKeys.length === 0 || queryCols[col.name])
+                      {displayCols
                         .map((col: any) => (
                         <td key={col.id} className="px-4 py-2 truncate max-w-[200px] text-foreground font-mono text-xs">
                           {row.data[col.name]?.toString() || '-'}
