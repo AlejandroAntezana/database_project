@@ -1,14 +1,66 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { FlowCanvas } from "./components/FlowCanvas"
 import { Sidebar } from "./components/Sidebar"
 import { DataPanel } from "./components/DataPanel"
-import { PanelLeftClose, PanelLeft, PanelBottomClose, PanelBottom } from "lucide-react"
+import { PanelLeftClose, PanelLeft, PanelBottomClose, PanelBottom, Download, Upload } from "lucide-react"
+import { useStore } from "./store/useStore"
 
 function App() {
   const [showSidebar, setShowSidebar] = useState(true)
   const [showDataPanel, setShowDataPanel] = useState(true)
   const [panelHeight, setPanelHeight] = useState(320)
   const [isResizing, setIsResizing] = useState(false)
+
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const handleExport = () => {
+    let filename = window.prompt("Nombre del archivo de exportación:", "edudb_export")
+    if (filename === null) return // User cancelled
+    
+    filename = filename.trim()
+    if (filename === "") filename = "edudb_export"
+    const finalFilename = filename.endsWith(".json") ? filename : `${filename}.json`
+
+    const state = useStore.getState()
+    const data = {
+      nodes: state.nodes,
+      edges: state.edges,
+      rows: state.rows
+    }
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = finalFilename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
+  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const reader = new FileReader()
+    reader.onload = (event) => {
+      try {
+        const result = event.target?.result
+        if (typeof result === 'string') {
+          const data = JSON.parse(result)
+          const state = useStore.getState()
+          state.loadSchema(data.nodes || [], data.edges || [], data.rows || [])
+        }
+      } catch (err) {
+        console.error("Error importing JSON:", err)
+        alert("El archivo no es válido o está corrupto.")
+      }
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
+    }
+    reader.readAsText(file)
+  }
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -50,6 +102,30 @@ function App() {
             <h1 className="font-semibold text-lg text-foreground tracking-tight">EduDB Visualizer</h1>
           </div>
           <div className="flex items-center gap-2">
+            <input 
+              type="file" 
+              accept=".json" 
+              ref={fileInputRef} 
+              style={{ display: 'none' }} 
+              onChange={handleImport} 
+            />
+            <button 
+              onClick={() => fileInputRef.current?.click()} 
+              className="p-2 hover:bg-muted rounded-md text-muted-foreground transition-colors flex items-center gap-1.5 text-sm"
+              title="Importar base de datos"
+            >
+              <Upload size={18} />
+              <span className="hidden sm:inline">Importar</span>
+            </button>
+            <button 
+              onClick={handleExport} 
+              className="p-2 hover:bg-muted rounded-md text-muted-foreground transition-colors flex items-center gap-1.5 text-sm"
+              title="Exportar base de datos"
+            >
+              <Download size={18} />
+              <span className="hidden sm:inline">Exportar</span>
+            </button>
+            <div className="w-px h-6 bg-border mx-1"></div>
             <button 
               onClick={() => setShowSidebar(!showSidebar)} 
               className="p-2 hover:bg-muted rounded-md text-muted-foreground transition-colors"
