@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react"
 import { FlowCanvas } from "./components/FlowCanvas"
 import { Sidebar } from "./components/Sidebar"
 import { DataPanel } from "./components/DataPanel"
-import { PanelLeftClose, PanelLeft, PanelBottomClose, PanelBottom, Download, Upload } from "lucide-react"
+import { PanelLeftClose, PanelLeft, PanelBottomClose, PanelBottom, Download, Upload, Trash2 } from "lucide-react"
 import { useStore } from "./store/useStore"
 
 function App() {
@@ -124,6 +124,18 @@ function App() {
             >
               <Download size={18} />
               <span className="hidden sm:inline">Exportar</span>
+            </button>
+            <button 
+              onClick={() => {
+                if (window.confirm("¿Estás seguro de que quieres limpiar todo el contenido? Esta acción no se puede deshacer.")) {
+                  useStore.getState().clearAll()
+                }
+              }}
+              className="p-2 hover:bg-destructive/10 hover:text-destructive rounded-md text-muted-foreground transition-colors flex items-center gap-1.5 text-sm"
+              title="Limpiar todo"
+            >
+              <Trash2 size={18} />
+              <span className="hidden sm:inline">Limpiar</span>
             </button>
             <div className="w-px h-6 bg-border mx-1"></div>
             <button 

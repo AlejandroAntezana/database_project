@@ -73,6 +73,7 @@ interface DatabaseState {
   addQuerySort: (sort: QuerySort) => void
   updateQuerySort: (index: number, sort: QuerySort) => void
   removeQuerySort: (index: number) => void
+  clearAll: () => void
 }
 
 export const useStore = create<DatabaseState>()(
@@ -184,6 +185,15 @@ export const useStore = create<DatabaseState>()(
         const newSorts = [...state.querySorts]
         newSorts.splice(index, 1)
         return { querySorts: newSorts }
+      }),
+      clearAll: () => set({
+        nodes: [],
+        edges: [],
+        rows: [],
+        selectedQueryTable: null,
+        queryConditions: [],
+        logicalOperator: 'AND',
+        querySorts: []
       })
     }),
     {
