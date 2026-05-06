@@ -27,11 +27,11 @@ export function DataPanel() {
   
   // Visual Query Builder States
   const selectedQueryTable = useStore(state => state.selectedQueryTable)
+  const queryJoins = useStore(state => state.queryJoins)
+  const querySelections = useStore(state => state.querySelections)
   const queryConditions = useStore(state => state.queryConditions)
   const logicalOperator = useStore(state => state.logicalOperator)
   const querySorts = useStore(state => state.querySorts)
-
-  const queryTableData = nodes.find(n => n.id === selectedQueryTable)?.data as any
 
   const tableRows = useMemo(() => {
     if (!table) return []
@@ -74,16 +74,60 @@ export function DataPanel() {
     return results
   }, [rows, sourceTable, targetTable, edgeData, selectedEdge])
 
-  // Dynamic Query Execution Filter (Visual Builder)
-  const queryRows = useMemo(() => {
-    if (!selectedQueryTable || activeTab !== 'query') return []
-    let data = rows.filter(r => r.tableId === selectedQueryTable)
+  // --- Dynamic Query Execution Filter (Visual Builder) ---
+  const queryTables = useMemo(() => {
+    if (!selectedQueryTable) return []
+    const tables = new Map<string, any>()
+    const primaryNode = nodes.find(n => n.id === selectedQueryTable)
+    if (primaryNode) tables.set(primaryNode.id, primaryNode.data)
+
+    queryJoins.forEach(join => {
+      const targetNode = nodes.find(n => n.id === join.joinTableId)
+      if (targetNode) tables.set(join.joinTableId, targetNode.data)
+    })
+    return Array.from(tables.values())
+  }, [nodes, selectedQueryTable, queryJoins])
+
+  const executedQueryData = useMemo(() => {
+    if (!selectedQueryTable || activeTab !== 'query') return { rows: [], columns: [] }
+
+    // Step 1: FROM & JOINs (Cartesian Product + Filter)
+    let joinedDataset: Record<string, any>[] = []
     
+    const primaryRows = rows.filter(r => r.tableId === selectedQueryTable)
+    joinedDataset = primaryRows.map(r => {
+       const prefixedData: Record<string, any> = {}
+       for (const [k, v] of Object.entries(r.data)) prefixedData[`${selectedQueryTable}.${k}`] = v
+       return prefixedData
+    })
+
+    for (const join of queryJoins) {
+       if (!join.joinTableId || !join.sourceTableId || !join.sourceColumn || !join.targetColumn) continue;
+       const targetRows = rows.filter(r => r.tableId === join.joinTableId)
+       
+       const newDataset: Record<string, any>[] = []
+       for (const sr of joinedDataset) {
+          const srcVal = String(sr[`${join.sourceTableId}.${join.sourceColumn}`]).toLowerCase()
+          for (const tr of targetRows) {
+             const tgtVal = String(tr.data[join.targetColumn]).toLowerCase()
+             if (srcVal === tgtVal) {
+                const prefixedData: Record<string, any> = { ...sr }
+                for (const [k, v] of Object.entries(tr.data)) prefixedData[`${join.joinTableId}.${k}`] = v
+                newDataset.push(prefixedData)
+             }
+          }
+       }
+       joinedDataset = newDataset
+    }
+
+    // Step 2: WHERE
+    let filteredData = joinedDataset
     if (queryConditions.length > 0) {
-      data = data.filter(r => {
+      filteredData = filteredData.filter(r => {
         const results = queryConditions.map(c => {
-          if (!c.column || !c.operator) return true // ignore incomplete
-          const rowVal = r.data[c.column]
+          if (!c.column || !c.operator || !c.tableId) return true
+          const rowVal = r[`${c.tableId}.${c.column}`]
+          if (rowVal === undefined) return false
           
           if (c.operator === 'IS_TRUE') return rowVal === true || String(rowVal).toLowerCase() === 'true'
           if (c.operator === 'IS_FALSE') return rowVal === false || String(rowVal).toLowerCase() === 'false'
@@ -104,12 +148,58 @@ export function DataPanel() {
       })
     }
 
+    // Step 3: GROUP BY & Aggregations
+    const hasAgg = querySelections.some(s => s.aggregation && s.aggregation !== 'NONE')
+    const nonAggSels = querySelections.filter(s => !s.aggregation || s.aggregation === 'NONE')
+    let finalRows = filteredData
+
+    if (hasAgg) {
+       const groups = new Map<string, any[]>()
+       if (nonAggSels.length > 0) {
+          for (const row of filteredData) {
+             const key = nonAggSels.map(s => String(row[`${s.tableId}.${s.columnName}`])).join('|')
+             if (!groups.has(key)) groups.set(key, [])
+             groups.get(key)!.push(row)
+          }
+       } else {
+          groups.set('all', filteredData)
+       }
+
+       finalRows = []
+       for (const [_, groupRows] of groups.entries()) {
+          const aggregatedRow: Record<string, any> = {}
+          if (groupRows.length > 0) {
+             const first = groupRows[0]
+             for (const s of nonAggSels) aggregatedRow[`${s.tableId}.${s.columnName}`] = first[`${s.tableId}.${s.columnName}`]
+          }
+          for (const s of querySelections) {
+             if (s.aggregation && s.aggregation !== 'NONE') {
+                const key = `${s.tableId}.${s.columnName}`
+                const values = groupRows.map(r => r[key])
+                const numValues = values.map(v => Number(v)).filter(v => !isNaN(v))
+                
+                let aggResult: any = 0
+                if (s.aggregation === 'COUNT') aggResult = values.filter(v => v !== undefined && v !== null).length
+                else if (s.aggregation === 'SUM') aggResult = numValues.reduce((a,b)=>a+b, 0)
+                else if (s.aggregation === 'AVG') aggResult = numValues.length > 0 ? +(numValues.reduce((a,b)=>a+b, 0) / numValues.length).toFixed(2) : 0
+                else if (s.aggregation === 'MAX') aggResult = numValues.length > 0 ? Math.max(...numValues) : 0
+                else if (s.aggregation === 'MIN') aggResult = numValues.length > 0 ? Math.min(...numValues) : 0
+                
+                aggregatedRow[`${s.aggregation}(${s.tableId}.${s.columnName})`] = aggResult
+             }
+          }
+          finalRows.push(aggregatedRow)
+       }
+    }
+
+    // Step 4: ORDER BY
     if (querySorts.length > 0) {
-      data = [...data].sort((a, b) => {
+      finalRows = [...finalRows].sort((a, b) => {
         for (const sort of querySorts) {
-           if (!sort.column) continue
-           const valA = a.data[sort.column]
-           const valB = b.data[sort.column]
+           if (!sort.column || !sort.tableId) continue
+           const key = `${sort.tableId}.${sort.column}`
+           const valA = a[key]
+           const valB = b[key]
            if (valA === valB) continue
            
            const numA = Number(valA)
@@ -118,16 +208,39 @@ export function DataPanel() {
            
            let compare = 0
            if (isNum) compare = numA - numB
-           else compare = String(valA).localeCompare(String(valB))
+           else compare = String(valA || '').localeCompare(String(valB || ''))
            
            return sort.direction === 'ASC' ? compare : -compare
         }
         return 0
       })
     }
+
+    // Step 5: SELECT (Projections mapping)
+    const displayCols: { id: string, name: string, dataKey: string }[] = []
     
-    return data
-  }, [rows, selectedQueryTable, queryConditions, logicalOperator, querySorts, activeTab])
+    if (querySelections.length > 0) {
+       for (const s of querySelections) {
+          const tName = queryTables.find(t => t.id === s.tableId)?.name || '?'
+          if (s.aggregation && s.aggregation !== 'NONE') {
+             const k = `${s.aggregation}(${s.tableId}.${s.columnName})`
+             displayCols.push({ id: k, name: `${s.aggregation}(${tName}.${s.columnName})`, dataKey: k })
+          } else {
+             const k = `${s.tableId}.${s.columnName}`
+             displayCols.push({ id: k, name: `${tName}.${s.columnName}`, dataKey: k })
+          }
+       }
+    } else {
+       for (const table of queryTables) {
+          for (const col of table.columns) {
+             const k = `${table.id}.${col.name}`
+             displayCols.push({ id: k, name: `${table.name}.${col.name}`, dataKey: k })
+          }
+       }
+    }
+
+    return { rows: finalRows.map((r, i) => ({ id: `res_${i}`, data: r })), columns: displayCols }
+  }, [rows, selectedQueryTable, queryJoins, queryConditions, logicalOperator, querySorts, querySelections, activeTab, queryTables, nodes])
 
 
   // Semantic Relationship Translator
@@ -267,7 +380,8 @@ export function DataPanel() {
   }
   
   const tableCols = table.columns || []
-  const displayCols = activeTab === 'data' ? tableCols : (queryTableData?.columns || [])
+  const queryOutputCols = executedQueryData.columns
+  const queryRowsData = executedQueryData.rows
 
   return (
     <div className="h-full border-t bg-card shrink-0 flex flex-col shadow-[0_-4px_20px_-10px_rgba(0,0,0,0.1)] z-20 relative transition-all">
@@ -354,40 +468,58 @@ export function DataPanel() {
         <div className="flex-1 flex flex-col overflow-hidden bg-background relative">
 
           <div className="flex-1 overflow-auto p-0">
-            {displayCols.length === 0 ? (
+            {activeTab === 'data' && tableCols.length === 0 ? (
                <div className="text-sm text-muted-foreground flex items-center justify-center h-full">
-                 Estructura vacía o tabla no seleccionada.
+                 Estructura vacía.
+               </div>
+            ) : activeTab === 'query' && !selectedQueryTable ? (
+               <div className="text-sm text-muted-foreground flex items-center justify-center h-full">
+                 Selecciona una tabla en el Query Builder para ver los resultados.
                </div>
             ) : (
               <table className="w-full text-sm text-left">
                 <thead className="text-xs text-muted-foreground uppercase bg-muted/30 sticky top-0 shadow-sm">
                   <tr>
-                    {displayCols
-                      .map((col: any) => (
+                    {activeTab === 'data' ? (
+                      tableCols.map((col: any) => (
                         <th key={col.id} className="px-4 py-3 font-semibold">{col.name}</th>
-                    ))}
+                      ))
+                    ) : (
+                      queryOutputCols.map((col) => (
+                        <th key={col.id} className="px-4 py-3 font-semibold">{col.name}</th>
+                      ))
+                    )}
                     {activeTab === 'data' && <th className="px-4 py-3 w-10"></th>}
                   </tr>
                 </thead>
                 <tbody>
-                  {(activeTab === 'data' ? tableRows : queryRows).map((row) => (
-                    <tr key={row.id} className="border-b border-border/50 hover:bg-muted/20 transition-colors">
-                      {displayCols
-                        .map((col: any) => (
-                        <td key={col.id} className="px-4 py-2 truncate max-w-[200px] text-foreground font-mono text-xs">
-                          {row.data[col.name]?.toString() || '-'}
-                        </td>
-                      ))}
-                      {activeTab === 'data' && (
+                  {activeTab === 'data' ? (
+                    tableRows.map((row) => (
+                      <tr key={row.id} className="border-b border-border/50 hover:bg-muted/20 transition-colors">
+                        {tableCols.map((col: any) => (
+                          <td key={col.id} className="px-4 py-2 truncate max-w-[200px] text-foreground font-mono text-xs">
+                            {row.data[col.name]?.toString() || '-'}
+                          </td>
+                        ))}
                         <td className="px-4 py-2 text-right">
                            <button onClick={() => deleteRow(row.id)} className="text-destructive/70 hover:text-destructive transition-colors">
                              <Trash2 size={14} />
                            </button>
                         </td>
-                      )}
-                    </tr>
-                  ))}
-                  {(activeTab === 'data' ? tableRows : queryRows).length === 0 && (
+                      </tr>
+                    ))
+                  ) : (
+                    queryRowsData.map((row) => (
+                      <tr key={row.id} className="border-b border-border/50 hover:bg-muted/20 transition-colors">
+                        {queryOutputCols.map((col) => (
+                          <td key={col.id} className="px-4 py-2 truncate max-w-[200px] text-foreground font-mono text-xs font-semibold">
+                            {row.data[col.dataKey] !== undefined ? row.data[col.dataKey].toString() : '-'}
+                          </td>
+                        ))}
+                      </tr>
+                    ))
+                  )}
+                  {(activeTab === 'data' ? tableRows : queryRowsData).length === 0 && (
                     <tr>
                       <td colSpan={10} className="text-center py-12 text-muted-foreground">
                         No hay registros que mostrar.

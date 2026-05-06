@@ -30,14 +30,31 @@ export interface RowData {
 
 export interface QueryCondition {
   id: string
+  tableId: string
   column: string
   operator: string
   value: string | number | boolean
 }
 
 export interface QuerySort {
+  tableId: string
   column: string
   direction: 'ASC' | 'DESC'
+}
+
+export interface QuerySelection {
+  id: string
+  tableId: string
+  columnName: string
+  aggregation?: 'NONE' | 'COUNT' | 'SUM' | 'AVG' | 'MAX' | 'MIN'
+}
+
+export interface QueryJoin {
+  id: string
+  joinTableId: string
+  sourceTableId: string
+  sourceColumn: string
+  targetColumn: string
 }
 
 interface DatabaseState {
@@ -61,11 +78,19 @@ interface DatabaseState {
   loadSchema: (nodes: TableNode[], edges: Edge[], rows: RowData[]) => void
   
   selectedQueryTable: string | null
+  queryJoins: QueryJoin[]
+  querySelections: QuerySelection[]
   queryConditions: QueryCondition[]
   logicalOperator: 'AND' | 'OR'
   querySorts: QuerySort[]
   
   setQueryTable: (tableId: string | null) => void
+  addQueryJoin: (join: Omit<QueryJoin, 'id'>) => void
+  updateQueryJoin: (id: string, payload: Partial<Omit<QueryJoin, 'id'>>) => void
+  removeQueryJoin: (id: string) => void
+  addQuerySelection: (selection: Omit<QuerySelection, 'id'>) => void
+  updateQuerySelection: (id: string, payload: Partial<Omit<QuerySelection, 'id'>>) => void
+  removeQuerySelection: (id: string) => void
   addQueryCondition: (condition: Omit<QueryCondition, 'id'>) => void
   updateQueryCondition: (id: string, payload: Partial<Omit<QueryCondition, 'id'>>) => void
   removeQueryCondition: (id: string) => void
@@ -83,6 +108,8 @@ export const useStore = create<DatabaseState>()(
       edges: [],
       rows: [],
       selectedQueryTable: null,
+      queryJoins: [],
+      querySelections: [],
       queryConditions: [],
       logicalOperator: 'AND',
       querySorts: [],
@@ -170,7 +197,13 @@ export const useStore = create<DatabaseState>()(
 
       loadSchema: (nodes, edges, rows) => set({ nodes, edges, rows }),
 
-      setQueryTable: (tableId) => set({ selectedQueryTable: tableId, queryConditions: [], querySorts: [] }),
+      setQueryTable: (tableId) => set({ selectedQueryTable: tableId, queryJoins: [], querySelections: [], queryConditions: [], querySorts: [] }),
+      addQueryJoin: (join) => set((state) => ({ queryJoins: [...state.queryJoins, { id: uuidv4(), ...join }] })),
+      updateQueryJoin: (id, payload) => set((state) => ({ queryJoins: state.queryJoins.map(j => j.id === id ? { ...j, ...payload } : j) })),
+      removeQueryJoin: (id) => set((state) => ({ queryJoins: state.queryJoins.filter(j => j.id !== id) })),
+      addQuerySelection: (selection) => set((state) => ({ querySelections: [...state.querySelections, { id: uuidv4(), ...selection }] })),
+      updateQuerySelection: (id, payload) => set((state) => ({ querySelections: state.querySelections.map(s => s.id === id ? { ...s, ...payload } : s) })),
+      removeQuerySelection: (id) => set((state) => ({ querySelections: state.querySelections.filter(s => s.id !== id) })),
       addQueryCondition: (condition) => set((state) => ({ queryConditions: [...state.queryConditions, { id: uuidv4(), ...condition }] })),
       updateQueryCondition: (id, payload) => set((state) => ({ queryConditions: state.queryConditions.map(c => c.id === id ? { ...c, ...payload } : c) })),
       removeQueryCondition: (id) => set((state) => ({ queryConditions: state.queryConditions.filter(c => c.id !== id) })),
@@ -191,6 +224,8 @@ export const useStore = create<DatabaseState>()(
         edges: [],
         rows: [],
         selectedQueryTable: null,
+        queryJoins: [],
+        querySelections: [],
         queryConditions: [],
         logicalOperator: 'AND',
         querySorts: []
